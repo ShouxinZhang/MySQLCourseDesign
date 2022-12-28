@@ -1,0 +1,135 @@
+(1)插入20条音乐记录
+SELECT *
+FROM 音乐表;
+(2)创作团队成员歌曲
+CREATE VIEW music_view AS
+SELECT m.音乐编号 AS "音乐编号", m.音乐名称 AS "音乐",
+       GROUP_CONCAT(p.姓名 SEPARATOR ', ') AS "歌手",
+       GROUP_CONCAT(CASE WHEN mp.是否是词作者 = '是' THEN p.姓名 END SEPARATOR ', ') AS "词作者",
+       GROUP_CONCAT(CASE WHEN mp.是否是曲作者 = '是' THEN p.姓名 END SEPARATOR ', ') AS "曲作者"
+FROM 音乐表 m
+JOIN 歌曲制作人员 mp ON m.音乐编号 = mp.音乐号
+JOIN 人员表 p ON mp.人员号 = p.人员编号
+GROUP BY m.音乐编号, m.音乐名称;
+SELECT *
+FROM music_view
+WHERE 歌手='数据库测试组';
+(3)&(4)查询用户张三和李四的评论
+CREATE VIEW testcomments AS
+SELECT c.*
+FROM 音乐评论表 c
+JOIN 用户表 u ON c.用户编号 = u.用户编号
+WHERE u.用户名 = '张三' OR u.用户名 = '李四';
+SELECT *
+FROM testcomments;
+(5)查询各用户最近一月的听歌总数
+SELECT u.用户名, COUNT(*) AS "听歌总数"
+FROM 用户表 u
+JOIN 歌曲播放表 p ON u.用户编号 = p.用户编号
+WHERE p.播放日期 BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 MONTH) AND CURDATE()
+GROUP BY u.用户名;
+(6)查询周杰伦演唱的歌曲的平均评论数
+SELECT 
+    AVG(c.num_comments) AS "平均评论数",
+    SUM(ABS(c.num_comments)) / COUNT(*) AS "一范数平均",
+    SQRT(SUM(POW(c.num_comments, 2))) / COUNT(*) AS "二范数平均",
+    MAX(ABS(c.num_comments)) / COUNT(*) AS "无穷范数平均"
+FROM (
+  SELECT m.音乐编号, COUNT(c.评论编号) AS num_comments
+  FROM 音乐表 m
+  JOIN 歌曲制作人员 mp ON m.音乐编号 = mp.音乐号
+  JOIN 人员表 p ON mp.人员号 = p.人员编号
+  LEFT JOIN 音乐评论表 c ON m.音乐编号 = c.音乐编号
+  WHERE p.姓名 = '周杰伦' AND mp.是否是歌手 = '是'
+  GROUP BY m.音乐编号
+) c;
+(7)查询各月份所有歌曲的平均评论数.
+SELECT MONTHNAME(m.发行时间) AS "月份", AVG(c.num_comments) AS "平均评论数"
+FROM 音乐表 m
+LEFT JOIN (
+  SELECT 音乐编号, COUNT(评论编号) AS num_comments
+  FROM 音乐评论表
+  GROUP BY 音乐编号
+) c ON m.音乐编号 = c.音乐编号
+GROUP BY MONTHNAME(m.发行时间)
+ORDER BY AVG(c.num_comments) DESC;
+(8)查询歌曲数量超过10首歌单,按照歌单内歌曲的平均评论数进行排序
+SELECT p.歌单编号, AVG(c.num_comments) AS "平均评论数"
+FROM 用户歌单表 p
+INNER JOIN 歌单音乐表 s ON p.歌单编号 = s.歌单编号
+LEFT JOIN (
+  SELECT 音乐编号, COUNT(评论编号) AS num_comments
+  FROM 音乐评论表
+  GROUP BY 音乐编号
+) c ON s.音乐编号 = c.音乐编号
+GROUP BY p.歌单编号
+HAVING COUNT(s.音乐编号) > 10
+ORDER BY AVG(c.num_comments) DESC;
+(9)查询既能唱歌,又能作曲的人员
+SELECT p.人员号, r.姓名
+FROM 歌曲制作人员 p
+INNER JOIN 人员表 r ON p.人员号 = r.人员编号
+WHERE p.是否是歌手 = '是' AND p.是否是曲作者 = '是';
+(10)创建视图,包含90后歌手获得的评论数,和00后歌手获得的评论数
+CREATE VIEW SingerComments AS
+SELECT p.姓名, p.出生年份, COUNT(c.评论编号) AS 评论数
+FROM 人员表 p
+INNER JOIN 歌曲制作人员 r ON p.人员编号 = r.人员号
+INNER JOIN 音乐表 m ON r.音乐号 = m.音乐编号
+INNER JOIN 音乐评论表 c ON m.音乐编号 = c.音乐编号
+WHERE p.性别 = '男' AND r.是否是歌手 = '是'
+AND (YEAR(p.出生年份) BETWEEN 1990 AND 1999 OR YEAR(p.出生年份) BETWEEN 2000 AND 2009)
+GROUP BY p.人员编号;
+SELECT *
+FROM SingerComments;
+(11)创建视图,包括粤语歌和英文歌的平均评论数
+CREATE VIEW 粤语歌英文歌评论平均数视图 AS
+SELECT AVG(CASE WHEN 语种 = '粤语' THEN 评论数 ELSE NULL END) AS 粤语歌平均评论数,
+       AVG(CASE WHEN 语种 = '英语' THEN 评论数 ELSE NULL END) AS 英文歌平均评论数
+FROM (SELECT 音乐表.音乐编号, 音乐表.语种, COUNT(音乐评论表.音乐编号) AS 评论数
+      FROM 音乐表
+      LEFT JOIN 音乐评论表
+      ON 音乐表.音乐编号 = 音乐评论表.音乐编号
+      GROUP BY 音乐表.音乐编号) AS 各音乐评论数;
+SELECT
+* 
+FROM
+粤语歌英文歌评论平均数视图;
+(12)创建视图,包括唱片公司和其相应的所有音乐的评论总数
+CREATE VIEW record_company_music_comments AS
+SELECT 唱片公司, COUNT(音乐评论表.音乐编号) AS 评论总数
+FROM 音乐表
+INNER JOIN 音乐评论表 ON 音乐表.音乐编号=音乐评论表.音乐编号
+GROUP BY 唱片公司;
+SELECT
+*
+FROM record_company_music_comments;
+(13)五个自拟的有意义的查询或更新操作
+1.查询出生年份在 1980 年以后的所有男歌手
+SELECT *
+FROM 人员表
+WHERE 出生年份 > '1980-01-01' AND 性别='男' AND 组合标记 IS NULL;
+2.查询所有歌手的歌曲数量,并将结果按歌曲数量从多到少排序
+SELECT 人员表.姓名, COUNT(歌曲制作人员.音乐号) as 歌曲数量
+FROM 人员表
+INNER JOIN 歌曲制作人员 ON 人员表.人员编号=歌曲制作人员.人员号
+WHERE 歌曲制作人员.是否是歌手='是'
+GROUP BY 人员表.姓名
+ORDER BY 歌曲数量 DESC;
+3.查询所有用户的用户名和歌单数量
+SELECT 用户表.用户名, COUNT(用户歌单表.歌单编号) as 歌单数量
+FROM 用户表
+LEFT JOIN 用户歌单表 ON 用户表.用户编号=用户歌单表.用户编号
+GROUP BY 用户表.用户名
+4.更新用户的用户密码为"newpassword"
+UPDATE 用户表
+SET 用户密码='newpassword';
+SELECT
+*
+FROM 用户表;
+5.查询所有既能唱歌,又能作词的人员
+SELECT 人员表.姓名
+FROM 人员表
+INNER JOIN 歌曲制作人员 ON 人员表.人员编号=歌曲制作人员.人员号
+WHERE 歌曲制作人员.是否是歌手='是' AND 歌曲制作人员.是否是词作者='是';
+
